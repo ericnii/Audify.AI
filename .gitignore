@@ -12,6 +12,7 @@ backend/.venv/
 
 # Runs
 backend/runs/
+.env
 
 # Node
 frontend/node_modules/

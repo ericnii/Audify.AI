@@ -16,7 +16,7 @@ def seperate_stems_demucs(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "python", "-m", "demucs",
+        "python3", "-m", "demucs",
         "-n", model,
         "--two-stems", "vocals",
         "--mp3",
