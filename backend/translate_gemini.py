@@ -26,7 +26,7 @@ def translate_text(text: str, audio: Path, target_language: str = "Spanish") -> 
     prompt = f""" You are a helpful assistant that translates lyrics of songs to different languages.
     Here is the instrumentals of the song: {audio}. Make sure the translation fits the rhythm and mood of the music.
     Translate the following text to {target_language}. 
-Only provide the translation, no explanations.
+    Only provide the translation, no explanations.
 
 Text to translate:
 {text}"""

@@ -1,12 +1,14 @@
 from __future__ import annotations
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 def seperate_stems_demucs(
         input_audio: str | Path,
         out_dir: str | Path,
-        model: str = "htdemucs",
+        # model: str = "htdemucs",
+        model: str = "mdx_extra_q",
         start_time: float | str | None = None,
         end_time: float | str | None = None,
 ) -> dict[str, Path]:
@@ -37,6 +39,7 @@ def seperate_stems_demucs(
             "-ss", str(start_time),
             "-to", str(end_time),
             "-i", str(input_audio),
+            "-c", "copy",
             "-acodec", "pcm_s16le",
             str(trimmed_input),
         ]
@@ -51,7 +54,7 @@ def seperate_stems_demucs(
         demucs_input = trimmed_input
 
     cmd_demucs = [
-        "python", "-m", "demucs",
+        sys.executable, "-m", "demucs",
         "-n", model,
         "--two-stems", "vocals",
         "--mp3",

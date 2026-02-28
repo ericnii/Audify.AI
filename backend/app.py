@@ -10,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 
 from audio_stems import seperate_stems_demucs
 from transcribe_whisper import transcribe_with_whisper
-from audio_chunk import extract_wav_chunk
 from translate_gemini import translate_segments
 
 app = FastAPI()

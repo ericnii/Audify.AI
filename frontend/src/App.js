@@ -1,25 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import "./App.css";
 
 const API_BASE = "http://localhost:8001";
+const TERMINAL_STATUSES = ["done", "error", "not_found"];
 
 function ProgressBar({ value }) {
   const v = Math.max(0, Math.min(100, Number(value ?? 0)));
   return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+    <div className="progress-wrap">
+      <div className="progress-row">
         <span>Progress</span>
         <span>{v}%</span>
       </div>
-      <div style={{ height: 10, background: "#eee", borderRadius: 999 }}>
-        <div
-          style={{
-            height: "100%",
-            width: `${v}%`,
-            background: "#111",
-            borderRadius: 999,
-            transition: "width 0.4s ease",
-          }}
-        />
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${v}%` }} />
       </div>
     </div>
   );
@@ -32,12 +26,18 @@ export default function App() {
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
+  const [startedAt, setStartedAt] = useState(null);
+  const [finishedAt, setFinishedAt] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pollRef = useRef(null);
 
   async function startJob() {
     setError(null);
     setJob(null);
     setJobId(null);
+    setStartedAt(null);
+    setFinishedAt(null);
+    setElapsedSeconds(0);
 
     if (!file) {
       setError("Pick an audio file first.");
@@ -84,6 +84,7 @@ export default function App() {
 
     const data = await res.json();
     setJobId(data.job_id);
+    setStartedAt(Date.now());
   }
 
   async function fetchJob(id) {
@@ -104,7 +105,8 @@ export default function App() {
         if (cancelled) return;
         setJob(data);
 
-        if (data.status === "done" || data.status === "error" || data.status === "not_found") {
+        if (TERMINAL_STATUSES.includes(data.status)) {
+          setFinishedAt((prev) => prev ?? Date.now());
           if (pollRef.current) clearInterval(pollRef.current);
           pollRef.current = null;
         }
@@ -123,125 +125,148 @@ export default function App() {
     };
   }, [jobId]);
 
+  useEffect(() => {
+    if (!startedAt) return;
+
+    const tick = () => {
+      const endTs = finishedAt ?? Date.now();
+      setElapsedSeconds(Math.max(0, Math.floor((endTs - startedAt) / 1000)));
+    };
+
+    tick();
+    if (finishedAt) return;
+
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [startedAt, finishedAt]);
+
   const vocalsUrl = job?.vocals_url ? `${API_BASE}${job.vocals_url}` : null;
   const instrumentalUrl = job?.instrumental_url ? `${API_BASE}${job.instrumental_url}` : null;
-
-  const running = job && !["done", "error", "not_found"].includes(job.status);
+  const progressValue = job?.status === "done" ? 100 : Number(job?.progress ?? 0);
+  const running = Boolean(job && !TERMINAL_STATUSES.includes(job.status));
+  const hasTimer = startedAt !== null;
 
   return (
-    <div style={{ maxWidth: 980, margin: "40px auto", fontFamily: "system-ui" }}>
-      <h1>Audify.AI — Transcription MVP</h1>
+    <div className="app-shell">
+      <div className="app-card">
+        <header className="app-header">
+          <h1>Audify.AI</h1>
+          <p>Upload a track, trim if needed, extract vocals, and translate transcript segments.</p>
+        </header>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          type="file"
-          accept="audio/*"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          Start (s):
+        <div className="controls">
           <input
-            type="number"
-            min={0}
-            step="0.1"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            style={{ width: 90 }}
-            placeholder="optional"
+            className="file-input"
+            type="file"
+            accept="audio/*"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
-        </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          End (s):
-          <input
-            type="number"
-            min={0}
-            step="0.1"
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            style={{ width: 90 }}
-            placeholder="optional"
-          />
-        </label>
+          <label className="field">
+            <span>Start (s)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              placeholder="optional"
+            />
+          </label>
 
-        <button onClick={startJob} disabled={!file || running}>
-          {running ? "Running..." : "Start"}
-        </button>
+          <label className="field">
+            <span>End (s)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              placeholder="optional"
+            />
+          </label>
+
+          <button className="start-btn" onClick={startJob} disabled={!file || running}>
+            {running ? "Running..." : "Start Job"}
+          </button>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+
+        {jobId && (
+          <div className="meta-row">
+            <div><strong>Job ID:</strong> {jobId}</div>
+            {hasTimer && (
+              <div>
+                <strong>Elapsed:</strong> {elapsedSeconds}s
+              </div>
+            )}
+          </div>
+        )}
+
+        {job?.status && (
+          <div className="status-card">
+            <div><strong>Status:</strong> {job.status}</div>
+            {job.stage && <div><strong>Stage:</strong> {job.stage}</div>}
+            <ProgressBar value={progressValue} />
+            {job.error && <div className="error">{job.error}</div>}
+          </div>
+        )}
+
+        {(vocalsUrl || instrumentalUrl) && (
+          <div className="section">
+            <h2>Outputs</h2>
+
+            {instrumentalUrl && (
+              <div className="output-block">
+                <h3>Instrumental</h3>
+                <audio controls src={instrumentalUrl} />
+                <div>
+                  <a href={instrumentalUrl} target="_blank" rel="noreferrer">Download instrumental</a>
+                </div>
+              </div>
+            )}
+
+            {vocalsUrl && (
+              <div className="output-block">
+                <h3>Extracted Vocals</h3>
+                <audio controls src={vocalsUrl} />
+                <div>
+                  <a href={vocalsUrl} target="_blank" rel="noreferrer">Download vocals</a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {job?.segments?.length ? (
+          <div className="section">
+            <h2>Transcript Segments</h2>
+            <div className="table-wrap">
+              <table width="100%" cellPadding="8">
+                <thead>
+                  <tr>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Original Text</th>
+                    <th>Translation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {job.segments.map((s, i) => (
+                    <tr key={i}>
+                      <td>{Number(s.start).toFixed(2)}</td>
+                      <td>{Number(s.end).toFixed(2)}</td>
+                      <td>{s.text}</td>
+                      <td>{s.translated || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </div>
-
-      {error && (
-        <div style={{ marginTop: 14, color: "crimson" }}>
-          {error}
-        </div>
-      )}
-
-      {jobId && (
-        <div style={{ marginTop: 14 }}>
-          <b>Job ID:</b> {jobId}
-        </div>
-      )}
-
-      {job?.status && (
-        <div style={{ marginTop: 10 }}>
-          <b>Status:</b> {job.status}
-          {job.stage && <div style={{ marginTop: 6 }}><b>Stage:</b> {job.stage}</div>}
-          <ProgressBar value={job.progress} />
-          {job.error && <div style={{ color: "crimson", marginTop: 6 }}>{job.error}</div>}
-        </div>
-      )}
-
-      {(vocalsUrl || instrumentalUrl) && (
-        <div style={{ marginTop: 22 }}>
-          <h2>Outputs</h2>
-
-          {instrumentalUrl && (
-            <div style={{ marginBottom: 14 }}>
-              <h3 style={{ marginBottom: 6 }}>Instrumental</h3>
-              <audio controls src={instrumentalUrl} />
-              <div>
-                <a href={instrumentalUrl} target="_blank" rel="noreferrer">Download instrumental</a>
-              </div>
-            </div>
-          )}
-
-          {vocalsUrl && (
-            <div>
-              <h3 style={{ marginBottom: 6 }}>Extracted Vocals</h3>
-              <audio controls src={vocalsUrl} />
-              <div>
-                <a href={vocalsUrl} target="_blank" rel="noreferrer">Download vocals</a>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {job?.segments?.length ? (
-        <div style={{ marginTop: 26 }}>
-          <h2>Transcript Segments</h2>
-          <table width="100%" cellPadding="8" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                <th style={{ width: 90 }}>Start</th>
-                <th style={{ width: 90 }}>End</th>
-                <th>Original Text</th>
-                <th>Translation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {job.segments.map((s, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td>{Number(s.start).toFixed(2)}</td>
-                  <td>{Number(s.end).toFixed(2)}</td>
-                  <td>{s.text}</td>
-                  <td>{s.translated || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
     </div>
   );
 }
