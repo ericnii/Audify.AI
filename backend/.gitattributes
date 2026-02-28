@@ -1,2 +1,0 @@
-backend/venv/lib/python3.9/site-packages/torch/lib/libtorch_cpu.dylib filter=lfs diff=lfs merge=lfs -text
-backend/venv/lib/python3.9/site-packages/onnxruntime/capi/onnxruntime_pybind11_state.so filter=lfs diff=lfs merge=lfs -text
