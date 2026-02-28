@@ -3,14 +3,13 @@ import shutil
 import threading 
 import uuid 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from audio_stems import seperate_stems_demucs
 from transcribe_whisper import transcribe_with_whisper
-from audio_chunk import extract_wav_chunk
 
 app = FastAPI()
 
@@ -31,7 +30,8 @@ JOBS: Dict[str, Dict[str, Any]] = {}
 
 def job_worker(job_id: str, 
                input_path: Path, 
-               clip_seconds: float
+               start_time: Optional[float],
+               end_time: Optional[float]
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -40,7 +40,12 @@ def job_worker(job_id: str,
     job_dir = RUNS / job_id
     try:
         JOBS[job_id]["status"] = "separating"
-        stems = seperate_stems_demucs(input_path, job_dir / "stems")
+        stems = seperate_stems_demucs(
+            input_path, 
+            job_dir / "stems",
+            start_time=start_time,
+            end_time=end_time
+            )
         JOBS[job_id].update({"stage": "transcribing", "progress": 35})
 
         # Copy to stable names
@@ -48,10 +53,8 @@ def job_worker(job_id: str,
         inst_out = job_dir / "instrumental.wav"
         shutil.copy(stems["vocals"], vocals_out)
         shutil.copy(stems["instrumental"], inst_out)
-        clipped_vocals = job_dir / "vocals_clipped.wav"
-        extract_wav_chunk(vocals_out, clipped_vocals, start_s=0, dur_s=clip_seconds)
         JOBS[job_id].update({"status": "transcribing", "stage": "transcribing", "progress": 50})
-        segments = transcribe_with_whisper(clipped_vocals)
+        segments = transcribe_with_whisper(vocals_out)
         JOBS[job_id].update({"stage": "finalizing", "progress": 95})
 
         JOBS[job_id].update({
@@ -67,7 +70,8 @@ def job_worker(job_id: str,
 @app.post("/jobs")
 async def create_job(
     file: UploadFile = File(...),
-    clip_seconds: float = Form(30.0),  # MVP: only process first N seconds
+    start_time: Optional[float] = Form(None),
+    end_time: Optional[float] = Form(None)
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
@@ -81,7 +85,11 @@ async def create_job(
     input_path = job_dir / file.filename
     input_path.write_bytes(await file.read())
 
-    t = threading.Thread(target=job_worker, args=(job_id, input_path, clip_seconds), daemon=True)
+    t = threading.Thread(
+        target=job_worker, 
+        args=(job_id, input_path, start_time, end_time),
+        daemon=True,
+    )
     t.start()
 
     return {"job_id": job_id}
