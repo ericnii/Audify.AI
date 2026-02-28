@@ -27,7 +27,8 @@ function ProgressBar({ value }) {
 
 export default function App() {
   const [file, setFile] = useState(null);
-  const [clipSeconds, setClipSeconds] = useState(30);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -42,10 +43,33 @@ export default function App() {
       setError("Pick an audio file first.");
       return;
     }
+    if ((startTime === "") !== (endTime === "")) {
+      setError("Provide both start and end time, or leave both blank.");
+      return;
+    }
+    if (startTime !== "" && endTime !== "") {
+      const startNum = Number(startTime);
+      const endNum = Number(endTime);
+      if (!Number.isFinite(startNum) || !Number.isFinite(endNum)) {
+        setError("Start and end time must be numbers.");
+        return;
+      }
+      if (startNum < 0) {
+        setError("Start time must be >= 0.");
+        return;
+      }
+      if (endNum <= startNum) {
+        setError("End time must be greater than start time.");
+        return;
+      }
+    }
 
     const form = new FormData();
     form.append("file", file);
-    form.append("clip_seconds", String(clipSeconds));
+    if (startTime !== "" && endTime !== "") {
+      form.append("start_time", String(Number(startTime)));
+      form.append("end_time", String(Number(endTime)));
+    }
 
     const res = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
@@ -116,14 +140,28 @@ export default function App() {
         />
 
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          Clip seconds:
+          Start (s):
           <input
             type="number"
-            min={5}
-            max={60}
-            value={clipSeconds}
-            onChange={(e) => setClipSeconds(Number(e.target.value))}
-            style={{ width: 80 }}
+            min={0}
+            step="0.1"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            style={{ width: 90 }}
+            placeholder="optional"
+          />
+        </label>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          End (s):
+          <input
+            type="number"
+            min={0}
+            step="0.1"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            style={{ width: 90 }}
+            placeholder="optional"
           />
         </label>
 
