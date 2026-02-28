@@ -1,1 +1,2 @@
-# Audify.AI
+# audify.ai
+# 1B pre-seed
