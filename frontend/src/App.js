@@ -241,24 +241,24 @@ export default function App() {
 
         {job?.segments?.length ? (
           <div className="section">
-            <h2>Transcript Segments</h2>
+            <h2>Transcript Words</h2>
             <div className="table-wrap">
               <table width="100%" cellPadding="8">
                 <thead>
                   <tr>
                     <th>Start</th>
                     <th>End</th>
-                    <th>Original Text</th>
+                    <th>Original Word</th>
                     <th>Translation</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {job.segments.map((s, i) => (
+                  {job.segments.map((word, i) => (
                     <tr key={i}>
-                      <td>{Number(s.start).toFixed(2)}</td>
-                      <td>{Number(s.end).toFixed(2)}</td>
-                      <td>{s.text}</td>
-                      <td>{s.translated || "—"}</td>
+                      <td>{Number(word.start).toFixed(2)}</td>
+                      <td>{Number(word.end).toFixed(2)}</td>
+                      <td><strong>{word.text}</strong></td>
+                      <td>{word.translated || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
