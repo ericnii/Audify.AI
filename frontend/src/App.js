@@ -260,6 +260,7 @@ export default function App() {
                     <th>Start</th>
                     <th>End</th>
                     <th>Original Word</th>
+                    <th>Phonemes</th>
                     <th>Translation</th>
                   </tr>
                 </thead>
@@ -269,6 +270,7 @@ export default function App() {
                       <td>{Number(word.start).toFixed(2)}</td>
                       <td>{Number(word.end).toFixed(2)}</td>
                       <td><strong>{word.text}</strong></td>
+                      <td>{word.phonemes || "—"}</td>
                       <td>{word.translated || "—"}</td>
                     </tr>
                   ))}

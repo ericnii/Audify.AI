@@ -1,4 +1,5 @@
 from faster_whisper import WhisperModel
+from text_phonemes import text_to_phonemes
 
 from pathlib import Path
 
@@ -25,10 +26,12 @@ def transcribe_with_whisper(audio_path):
                 word_text = word.word.strip()
                 if not word_text:
                     continue
+                phonemes = text_to_phonemes(word_text)
                 results.append({
                     "start": round(word.start, 2),
                     "end": round(word.end, 2),
-                    "text": word_text
+                    "text": word_text,
+                    "phonemes": phonemes
                 })
         else:
             # Fallback to segment-level if no words
