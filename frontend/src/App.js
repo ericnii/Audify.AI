@@ -225,7 +225,8 @@ export default function App() {
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 <th style={{ width: 90 }}>Start</th>
                 <th style={{ width: 90 }}>End</th>
-                <th>Text</th>
+                <th>Original Text</th>
+                <th>Translation</th>
               </tr>
             </thead>
             <tbody>
@@ -234,6 +235,7 @@ export default function App() {
                   <td>{Number(s.start).toFixed(2)}</td>
                   <td>{Number(s.end).toFixed(2)}</td>
                   <td>{s.text}</td>
+                  <td>{s.translated || "—"}</td>
                 </tr>
               ))}
             </tbody>

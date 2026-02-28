@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 
 from audio_stems import seperate_stems_demucs
 from transcribe_whisper import transcribe_with_whisper
+from audio_chunk import extract_wav_chunk
+from translate_gemini import translate_segments
 
 app = FastAPI()
 
@@ -53,8 +55,12 @@ def job_worker(job_id: str,
         inst_out = job_dir / "instrumental.wav"
         shutil.copy(stems["vocals"], vocals_out)
         shutil.copy(stems["instrumental"], inst_out)
+        clipped_vocals = job_dir / "vocals_clipped.wav"
+
         JOBS[job_id].update({"status": "transcribing", "stage": "transcribing", "progress": 50})
         segments = transcribe_with_whisper(vocals_out)
+        # Translate segments to Spanish with instrumental context
+        segments = translate_segments(segments, clipped_vocals, target_language="Spanish")
         JOBS[job_id].update({"stage": "finalizing", "progress": 95})
 
         JOBS[job_id].update({
