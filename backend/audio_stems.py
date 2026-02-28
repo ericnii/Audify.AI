@@ -19,10 +19,19 @@ def seperate_stems_demucs(
         "python", "-m", "demucs",
         "-n", model,
         "--two-stems", "vocals",
+        "--mp3",
         "--out", str(out_dir),
         str(input_audio)
     ]
-    subprocess.run(cmd, check=True)
+
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Demucs failed (code {proc.returncode}).\n"
+            f"CMD: {' '.join(cmd)}\n\n"
+            f"STDOUT:\n{proc.stdout}\n\n"
+            f"STDERR:\n{proc.stderr}\n"
+        )
 
     model_dir = out_dir / model
     if not model_dir.exists():
@@ -34,8 +43,8 @@ def seperate_stems_demucs(
     
     track_dir = max(track_dirs, key=lambda p: p.stat().st_mtime)
 
-    vocals = track_dir / "vocals.wav"
-    instrumental = track_dir / "instrumental.wav"
+    vocals = track_dir / "vocals.mp3"
+    instrumental = track_dir / "instrumental.mp3"
 
     if not vocals.exists():
         raise FileNotFoundError(f"Missing vocals stem: {vocals}")
