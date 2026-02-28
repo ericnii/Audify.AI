@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtualenvs
+venv/
+.venv/
+backend/venv/
+backend/.venv/
+
+# Runs
+backend/runs/
+
+# Node
+frontend/node_modules/
+dist/
+
+# OS
+.DS_Store
+EOF
