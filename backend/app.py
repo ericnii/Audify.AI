@@ -2,17 +2,15 @@ from __future__ import annotations
 import shutil
 import threading 
 import uuid 
-import math
 from pathlib import Path
 from typing import List, Dict, Any
-
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from audio_stems import seperate_stems_demucs
+from transcribe_whisper import transcribe_with_whisper
 from audio_chunk import extract_wav_chunk
-from transcribe_gemini import transcribe_with_timestamps_gemini
 
 app = FastAPI()
 
@@ -30,52 +28,6 @@ RUNS.mkdir(exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(RUNS)), name="files")
 
 JOBS: Dict[str, Dict[str, Any]] = {}
-
-def transcribe_chunked_gemini(
-    job_id: str,
-    vocals_wav: str | Path,
-    work_dir: str | Path,
-    chunk_s: float = 15.0,
-    total_s: float = 30.0,      
-) -> List[Dict[str, Any]]:
-    """
-    Transcribe a specific chunk of the 
-    vocal stem and outputs a list of 
-    segments.
-    """
-    vocals_wav = Path(vocals_wav).resolve()
-    work_dir = Path(work_dir).resolve()
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    chunks_dir = work_dir / "chunks"
-    chunks_dir.mkdir(exist_ok=True)
-
-    segments_all: List[Dict[str, Any]] = []
-
-    t = 0.0
-    n_chunks = int(math.ceil(total_s / chunk_s))
-
-    for i in range(n_chunks):
-        JOBS[job_id].update({
-            "stage": f"transcribing ({i + 1}/{n_chunks})",
-            "progress": 35 + int(55 * (i + 1) / n_chunks)
-        })
-        dur = min(chunk_s, total_s - t)
-        chunk_path = chunks_dir / f"chunk_{i:03d}.wav"
-        extract_wav_chunk(vocals_wav, chunk_path, start_s=t, dur_s=dur)
-
-        segs = transcribe_with_timestamps_gemini(chunk_path)
-        
-        for s in segs: 
-            segments_all.append({
-                "start": s["start"] + t,
-                "end": s["end"] + t,
-                "text": s["text"],
-            })
-
-        t += dur
-
-    return segments_all
 
 def job_worker(job_id: str, 
                input_path: Path, 
@@ -96,9 +48,10 @@ def job_worker(job_id: str,
         inst_out = job_dir / "instrumental.wav"
         shutil.copy(stems["vocals"], vocals_out)
         shutil.copy(stems["instrumental"], inst_out)
-
-        JOBS[job_id]["status"] = "transcribing"
-        segments = transcribe_chunked_gemini(job_id, vocals_out, job_dir, total_s=clip_seconds, chunk_s=min(15.0, clip_seconds))
+        clipped_vocals = job_dir / "vocals_clipped.wav"
+        extract_wav_chunk(vocals_out, clipped_vocals, start_s=0, dur_s=clip_seconds)
+        JOBS[job_id].update({"status": "transcribing", "stage": "transcribing", "progress": 50})
+        segments = transcribe_with_whisper(clipped_vocals)
         JOBS[job_id].update({"stage": "finalizing", "progress": 95})
 
         JOBS[job_id].update({

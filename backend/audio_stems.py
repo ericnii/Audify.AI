@@ -44,7 +44,7 @@ def seperate_stems_demucs(
     track_dir = max(track_dirs, key=lambda p: p.stat().st_mtime)
 
     vocals = track_dir / "vocals.mp3"
-    instrumental = track_dir / "instrumental.mp3"
+    instrumental = track_dir / "no_vocals.mp3"
 
     if not vocals.exists():
         raise FileNotFoundError(f"Missing vocals stem: {vocals}")
