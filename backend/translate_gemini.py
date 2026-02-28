@@ -58,6 +58,7 @@ def translate_segments(segments: list, audio_path: Path, target_language: str = 
             "start": segment["start"],
             "end": segment["end"],
             "text": segment["text"],  # Original text
+            "phonemes": segment.get("phonemes"),  # Preserve phonemes
             "translated": translated_text,  # Translated text
             "language": target_language
         })
