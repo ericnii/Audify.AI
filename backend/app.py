@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from audio_stems import seperate_stems_demucs
 from transcribe_whisper import transcribe_with_whisper
 from translate_gemini import translate_segments
+from vertex_tts import synthesize_texts_to_mp3, segments_to_ssml
 
 app = FastAPI()
 
@@ -64,9 +65,30 @@ def job_worker(job_id: str,
 
         # Synthesize translated segments into TTS audio using ElevenLabs (if configured)
         try:
-            translated_texts = [s.get("translated") or s.get("text") for s in segments]
+            # Build SSML from translated segments so the TTS can preserve pauses,
+            # language tags, and per-segment voice hints.
+            # Map simple language names to SSML language codes when possible.
+            def _lang_name_to_code(name: Optional[str]) -> str:
+                if not name:
+                    return "en-US"
+                lower = name.lower()
+                if "span" in lower:
+                    return "es-ES"
+                if "english" in lower:
+                    return "en-US"
+                if "french" in lower:
+                    return "fr-FR"
+                return "en-US"
+
+            # Determine a global language code from the job target (segments may
+            # carry a language field, but translate_segments currently writes
+            # the target name like 'Spanish').
+            global_lang = _lang_name_to_code(segments[0].get("language") if segments else None)
+            ssml = segments_to_ssml(segments, global_lang=global_lang)
             tts_out = job_dir / "tts.mp3"
-            synthesize_texts_to_mp3(translated_texts, tts_out)
+            # We pass the SSML as a single element and set ssml=True so the
+            # synthesize helper treats it as SSML payload.
+            synthesize_texts_to_mp3([ssml], tts_out, ssml=True, voice={"language_code": global_lang})
             tts_url = f"/files/{job_id}/tts.mp3"
             JOBS[job_id].update({"tts_url": tts_url})
         except Exception as e:
