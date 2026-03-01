@@ -24,11 +24,7 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-<<<<<<< HEAD
-  const [language, setLanguage] = useState("Spanish");
-=======
   const [targetLanguage, setTargetLanguage] = useState("Spanish");
->>>>>>> new_lang
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -76,11 +72,7 @@ export default function App() {
       form.append("start_time", String(Number(startTime)));
       form.append("end_time", String(Number(endTime)));
     }
-<<<<<<< HEAD
-    form.append("language", language);
-=======
     form.append("target_language", targetLanguage);
->>>>>>> new_lang
 
     const res = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
@@ -205,26 +197,6 @@ export default function App() {
           </label>
 
           <label className="field">
-<<<<<<< HEAD
-            <span>Language</span>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="Spanish">Spanish</option>
-              <option value="French">French</option>
-              <option value="German">German</option>
-              <option value="Japanese">Japanese</option>
-              <option value="Korean">Korean</option>
-              <option value="Portuguese">Portuguese</option>
-              <option value="Italian">Italian</option>
-              <option value="Mandarin">Mandarin</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span>&nbsp;</span>
-            <span>&nbsp;</span>
-          </label>
-
-=======
             <span>Target Language</span>
             <select
               value={targetLanguage}
@@ -232,10 +204,17 @@ export default function App() {
             >
               <option value="Spanish">Spanish</option>
               <option value="French">French</option>
+              <option value="German">German</option>
+              <option value="Italian">Italian</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Dutch">Dutch</option>
+              <option value="Swedish">Swedish</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+              <option value="Mandarin">Mandarin Chinese</option>
             </select>
           </label>
 
->>>>>>> new_lang
           <button className="start-btn" onClick={startJob} disabled={!file || running}>
             {running ? "Processing..." : "Translate"}
           </button>

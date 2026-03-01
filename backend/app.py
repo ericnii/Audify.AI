@@ -35,11 +35,7 @@ def job_worker(job_id: str,
                input_path: Path,
                start_time: Optional[float],
                end_time: Optional[float],
-<<<<<<< HEAD
-               language: str = "Spanish"
-=======
                target_language: str = "Spanish"
->>>>>>> new_lang
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -70,15 +66,11 @@ def job_worker(job_id: str,
         words = transcription["words"]
         
         # Translate only the segments (not individual words)
-<<<<<<< HEAD
-        segments = translate_segments(segments, clipped_vocals, target_language=language)
-=======
         segments = translate_segments(segments, vocals_out, target_language=target_language)
         
         # Reshape segments to add break timing for better rhythm syncing
         segments = reshape_for_synthesis(segments)
         
->>>>>>> new_lang
         JOBS[job_id].update({"stage": "finalizing", "progress": 80})
 
         # Synthesize translated segments into TTS audio using Google Cloud TTS API
@@ -94,12 +86,22 @@ def job_worker(job_id: str,
                     if not name:
                         return "en-US"
                     lower = name.lower()
-                    if "span" in lower:
-                        return "es-ES"
-                    if "english" in lower:
-                        return "en-US"
-                    if "french" in lower:
-                        return "fr-FR"
+                    # Map language names to SSML language codes
+                    lang_map = {
+                        "spanish": "es-ES",
+                        "french": "fr-FR",
+                        "german": "de-DE",
+                        "italian": "it-IT",
+                        "portuguese": "pt-BR",
+                        "dutch": "nl-NL",
+                        "swedish": "sv-SE",
+                        "japanese": "ja-JP",
+                        "korean": "ko-KR",
+                        "mandarin": "zh-CN",
+                    }
+                    for key, code in lang_map.items():
+                        if key in lower:
+                            return code
                     return "en-US"
 
                 # Determine a global language code from the job target (segments may
@@ -140,11 +142,7 @@ async def create_job(
     file: UploadFile = File(...),
     start_time: Optional[float] = Form(None),
     end_time: Optional[float] = Form(None),
-<<<<<<< HEAD
-    language: str = Form("Spanish"),
-=======
     target_language: str = Form("Spanish")
->>>>>>> new_lang
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
@@ -159,13 +157,8 @@ async def create_job(
     input_path.write_bytes(await file.read())
 
     t = threading.Thread(
-<<<<<<< HEAD
-        target=job_worker,
-        args=(job_id, input_path, start_time, end_time, language),
-=======
         target=job_worker, 
         args=(job_id, input_path, start_time, end_time, target_language),
->>>>>>> new_lang
         daemon=True,
     )
     t.start()
