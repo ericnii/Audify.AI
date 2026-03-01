@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import logo from "./logo.png";
 
 const API_BASE = "http://localhost:8000";
 const TERMINAL_STATUSES = ["done", "error", "not_found"];
@@ -23,6 +24,7 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [language, setLanguage] = useState("Spanish");
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -70,6 +72,7 @@ export default function App() {
       form.append("start_time", String(Number(startTime)));
       form.append("end_time", String(Number(endTime)));
     }
+    form.append("language", language);
 
     const res = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
@@ -150,17 +153,22 @@ export default function App() {
     <div className="app-shell">
       <div className="app-card">
         <header className="app-header">
-          <h1>Audify.AI</h1>
-          <p>Upload a track, trim if needed, extract vocals, and translate transcript segments.</p>
+          <img src={logo} alt="Audify.AI" className="app-logo" />
+          <p>AI-powered song translation studio</p>
         </header>
 
         <div className="controls">
-          <input
-            className="file-input"
-            type="file"
-            accept="audio/*"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
+          <div className="file-input-wrap">
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+            <div className="file-input-label">
+              <strong>Drop audio file</strong> or click to browse
+            </div>
+            {file && <div className="file-name">{file.name}</div>}
+          </div>
 
           <label className="field">
             <span>Start (s)</span>
@@ -170,7 +178,7 @@ export default function App() {
               step="0.1"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              placeholder="optional"
+              placeholder="0.0"
             />
           </label>
 
@@ -182,12 +190,31 @@ export default function App() {
               step="0.1"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              placeholder="optional"
+              placeholder="30.0"
             />
           </label>
 
+          <label className="field">
+            <span>Language</span>
+            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <option value="Spanish">Spanish</option>
+              <option value="French">French</option>
+              <option value="German">German</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Italian">Italian</option>
+              <option value="Mandarin">Mandarin</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>&nbsp;</span>
+            <span>&nbsp;</span>
+          </label>
+
           <button className="start-btn" onClick={startJob} disabled={!file || running}>
-            {running ? "Running..." : "Start Job"}
+            {running ? "Processing..." : "Translate"}
           </button>
         </div>
 
@@ -195,7 +222,7 @@ export default function App() {
 
         {jobId && (
           <div className="meta-row">
-            <div><strong>Job ID:</strong> {jobId}</div>
+            <div><strong>Job:</strong> {jobId.slice(0, 8)}</div>
             {hasTimer && (
               <div>
                 <strong>Elapsed:</strong> {elapsedSeconds}s
@@ -206,8 +233,8 @@ export default function App() {
 
         {job?.status && (
           <div className="status-card">
-            <div><strong>Status:</strong> {job.status}</div>
-            {job.stage && <div><strong>Stage:</strong> {job.stage}</div>}
+            <div><strong>Status: </strong>{job.status}</div>
+            {job.stage && <div><strong>Stage: </strong>{job.stage}</div>}
             <ProgressBar value={progressValue} />
             {job.error && <div className="error">{job.error}</div>}
           </div>
@@ -215,14 +242,14 @@ export default function App() {
 
         {(vocalsUrl || instrumentalUrl) && (
           <div className="section">
-            <h2>Outputs</h2>
+            <h2>Output</h2>
 
             {instrumentalUrl && (
               <div className="output-block">
                 <h3>Instrumental</h3>
                 <audio controls src={instrumentalUrl} />
                 <div>
-                  <a href={instrumentalUrl} target="_blank" rel="noreferrer">Download instrumental</a>
+                  <a href={instrumentalUrl} target="_blank" rel="noreferrer">Download</a>
                 </div>
               </div>
             )}
@@ -232,72 +259,12 @@ export default function App() {
                 <h3>Extracted Vocals</h3>
                 <audio controls src={vocalsUrl} />
                 <div>
-                  <a href={vocalsUrl} target="_blank" rel="noreferrer">Download vocals</a>
+                  <a href={vocalsUrl} target="_blank" rel="noreferrer">Download</a>
                 </div>
               </div>
             )}
           </div>
         )}
-
-        {job?.segments?.length ? (
-          <div className="section">
-            <h2>Transcript Segments (For Translation)</h2>
-            <div className="table-wrap">
-              <table width="100%" cellPadding="8">
-                <thead>
-                  <tr>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Original Text</th>
-                    <th>Translated Text</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {job.segments.map((segment, i) => (
-                    <tr key={i}>
-                      <td>{Number(segment.start).toFixed(2)}</td>
-                      <td>{Number(segment.end).toFixed(2)}</td>
-                      <td><strong>{segment.text}</strong></td>
-                      <td>{segment.translated || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
-
-        {job?.words?.length ? (
-          <div className="section">
-            <h2>Word-Level Timing</h2>
-            <div className="table-wrap">
-              <table width="100%" cellPadding="8">
-                <thead>
-                  <tr>
-                    <th>Word</th>
-                    <th>Start (s)</th>
-                    <th>End (s)</th>
-                    <th>Duration (s)</th>
-                    <th>Break After (s)</th>
-                    <th>Segment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {job.words.map((word, i) => (
-                    <tr key={i}>
-                      <td><strong>{word.text}</strong></td>
-                      <td>{Number(word.start).toFixed(2)}</td>
-                      <td>{Number(word.end).toFixed(2)}</td>
-                      <td>{Number(word.duration).toFixed(3)}</td>
-                      <td>{Number(word.break_after).toFixed(3)}</td>
-                      <td>#{word.segment_id}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );
