@@ -7,7 +7,7 @@ __pycache__/
 # Virtualenvs
 venv/
 .venv/
-backend/venv/
+backend/venv*/
 backend/.venv/
 
 # Runs

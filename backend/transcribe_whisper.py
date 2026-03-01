@@ -12,6 +12,30 @@ def _get_model():
         _model = WhisperModel("medium", compute_type="int8")
     return _model
 
+def _merge_short_segments(segments, min_duration=0.4):
+    merged = []
+    buffer = None
+
+    for seg in segments:
+        dur = seg["end"] - seg["start"]
+
+        if buffer is None:
+            buffer = seg.copy()
+            continue
+
+        if dur < min_duration:
+            # merge into buffer
+            buffer["end"] = seg["end"]
+            buffer["text"] += " " + seg["text"]
+        else:
+            merged.append(buffer)
+            buffer = seg.copy()
+
+    if buffer:
+        merged.append(buffer)
+
+    return merged
+
 def transcribe_with_whisper(audio_path):
     audio_path = str(Path(audio_path).resolve())
     model = _get_model()
@@ -20,21 +44,22 @@ def transcribe_with_whisper(audio_path):
 
     results = []
     for s in segments:
-        # Extract word-level timestamps if available
+        # Prefer phrase-level output so each segment can contain multiple words.
         if hasattr(s, 'words') and s.words:
-            for word in s.words:
-                word_text = word.word.strip()
-                if not word_text:
-                    continue
-                phonemes = text_to_phonemes(word_text)
-                results.append({
-                    "start": round(word.start, 2),
-                    "end": round(word.end, 2),
-                    "text": word_text,
-                    "phonemes": phonemes
-                })
+            text = s.text.strip()
+            if not text:
+                continue
+            start = s.words[0].start if s.words[0].start is not None else s.start
+            end = s.words[-1].end if s.words[-1].end is not None else s.end
+            phonemes = text_to_phonemes(text)
+            results.append({
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "text": text,
+                "phonemes": phonemes
+            })
         else:
-            # Fallback to segment-level if no words
+            # Fallback if per-word metadata is unavailable.
             text = s.text.strip()
             if not text:
                 continue
@@ -43,4 +68,5 @@ def transcribe_with_whisper(audio_path):
                 "end": round(s.end, 2),
                 "text": text
             })
-    return results
+    
+    return _merge_short_segments(results)
