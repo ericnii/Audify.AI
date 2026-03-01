@@ -125,6 +125,7 @@ def transcribe_with_segments_and_words(audio_path):
         if i < len(all_words) - 1:
             next_word = all_words[i + 1]
             break_after = next_word['start'] - word['end']
+            break_after = max(0, break_after)
         else:
             # Last word - no break after
             break_after = 0
@@ -142,3 +143,25 @@ def transcribe_with_segments_and_words(audio_path):
         "segments": segments,
         "words": words
     }
+
+def reshape_for_synthesis(transcription, translated_segments):
+    words = transcription["words"]
+
+    # Group break_after by segment_id
+    breaks_by_segment = {}
+    for w in words:
+        sid = w["segment_id"]
+        if sid not in breaks_by_segment:
+            breaks_by_segment[sid] = []
+        breaks_by_segment[sid].append(w["break_after"])
+    
+    # build nested arrays in segment order
+    segment_ids = sorted(breaks_by_segment.keys())
+    breaks_after = [breaks_by_segment[sid] for sid in segment_ids]
+
+    # Split translated text into words per segment
+    translated_words = [
+        seg["translated"].split() for seg in translated_segments
+    ]
+
+    return translated_words, breaks_after
