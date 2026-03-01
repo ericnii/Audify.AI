@@ -44,3 +44,101 @@ def transcribe_with_whisper(audio_path):
                 "text": text
             })
     return results
+
+
+def transcribe_with_segments_and_words(audio_path):
+    """
+    Transcribe audio and return both segments and word-level timing with breaks.
+    
+    Returns a dict with:
+    - segments: Default Whisper segments (for translation)
+    - words: List of individual words with start/end times and breaks between them
+    
+    Example:
+    {
+        "segments": [
+            {"start": 0.0, "end": 5.0, "text": "Hello world", "id": 0},
+            {"start": 5.5, "end": 10.0, "text": "How are you", "id": 1}
+        ],
+        "words": [
+            {"start": 0.0, "end": 0.5, "text": "Hello", "break_after": 0.3},
+            {"start": 0.8, "end": 1.2, "text": "world", "break_after": 4.3},
+            {"start": 5.5, "end": 6.0, "text": "How", "break_after": 0.2},
+            ...
+        ]
+    }
+    """
+    audio_path = str(Path(audio_path).resolve())
+    model = _get_model()
+
+    segments_list, _ = model.transcribe(audio_path, word_timestamps=True)
+
+    # Convert to lists to allow multiple iterations
+    segments_list = list(segments_list)
+    
+    segments = []
+    words = []
+    all_words = []  # Collect all words for break calculation
+    
+    # First pass: collect segments and all words
+    segment_id = 0
+    for segment in segments_list:
+        segment_text = segment.text.strip()
+        if not segment_text:
+            continue
+        
+        # Add segment for translation (default Whisper segments)
+        segments.append({
+            "id": segment_id,
+            "start": round(segment.start, 2),
+            "end": round(segment.end, 2),
+            "text": segment_text,
+            "translated": ""  # To be filled by translator
+        })
+        
+        # Extract word-level timestamps
+        if hasattr(segment, 'words') and segment.words:
+            for word in segment.words:
+                word_text = word.word.strip()
+                if not word_text:
+                    continue
+                all_words.append({
+                    "text": word_text,
+                    "start": word.start,
+                    "end": word.end,
+                    "segment_id": segment_id
+                })
+        else:
+            # Fallback: treat entire segment as one word
+            all_words.append({
+                "text": segment_text,
+                "start": segment.start,
+                "end": segment.end,
+                "segment_id": segment_id
+            })
+        
+        segment_id += 1
+    
+    # Second pass: calculate breaks based on word timing
+    for i, word in enumerate(all_words):
+        # Calculate break (silence) after this word
+        if i < len(all_words) - 1:
+            next_word = all_words[i + 1]
+            break_after = next_word['start'] - word['end']
+        else:
+            # Last word - no break after
+            break_after = 0
+        
+        words.append({
+            "text": word["text"],
+            "start": round(word["start"], 2),
+            "end": round(word["end"], 2),
+            "duration": round(word["end"] - word["start"], 3),
+            "break_after": round(break_after, 3),  # Silence after this word
+            "segment_id": word["segment_id"]
+        })
+    
+    return {
+        "segments": segments,
+        "words": words
+    }

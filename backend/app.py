@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from audio_stems import seperate_stems_demucs
-from transcribe_whisper import transcribe_with_whisper
+from transcribe_whisper import transcribe_with_whisper, transcribe_with_segments_and_words
 from translate_gemini import translate_segments
 
 app = FastAPI()
@@ -57,8 +57,13 @@ def job_worker(job_id: str,
         clipped_vocals = job_dir / "vocals_clipped.wav"
 
         JOBS[job_id].update({"status": "transcribing", "stage": "transcribing", "progress": 50})
-        segments = transcribe_with_whisper(vocals_out)
-        # Translate segments to Spanish with instrumental context
+        
+        # Use new function that returns both segments and words with timing/breaks
+        transcription = transcribe_with_segments_and_words(vocals_out)
+        segments = transcription["segments"]
+        words = transcription["words"]
+        
+        # Translate only the segments (not individual words)
         segments = translate_segments(segments, clipped_vocals, target_language="Spanish")
         JOBS[job_id].update({"stage": "finalizing", "progress": 95})
 
@@ -67,6 +72,7 @@ def job_worker(job_id: str,
             "vocals_url": f"/files/{job_id}/vocals.wav",
             "instrumental_url": f"/files/{job_id}/instrumental.wav",
             "segments": segments,
+            "words": words,  # Add word-level timing data
         })
 
     except Exception as e:

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
-const API_BASE = "http://localhost:8001";
+const API_BASE = "http://localhost:8000";
 const TERMINAL_STATUSES = ["done", "error", "not_found"];
 
 function ProgressBar({ value }) {
@@ -241,26 +241,56 @@ export default function App() {
 
         {job?.segments?.length ? (
           <div className="section">
-            <h2>Transcript Words</h2>
+            <h2>Transcript Segments (For Translation)</h2>
             <div className="table-wrap">
               <table width="100%" cellPadding="8">
                 <thead>
                   <tr>
                     <th>Start</th>
                     <th>End</th>
-                    <th>Original Word</th>
-                    <th>Phonemes</th>
-                    <th>Translation</th>
+                    <th>Original Text</th>
+                    <th>Translated Text</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {job.segments.map((word, i) => (
+                  {job.segments.map((segment, i) => (
                     <tr key={i}>
+                      <td>{Number(segment.start).toFixed(2)}</td>
+                      <td>{Number(segment.end).toFixed(2)}</td>
+                      <td><strong>{segment.text}</strong></td>
+                      <td>{segment.translated || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        {job?.words?.length ? (
+          <div className="section">
+            <h2>Word-Level Timing</h2>
+            <div className="table-wrap">
+              <table width="100%" cellPadding="8">
+                <thead>
+                  <tr>
+                    <th>Word</th>
+                    <th>Start (s)</th>
+                    <th>End (s)</th>
+                    <th>Duration (s)</th>
+                    <th>Break After (s)</th>
+                    <th>Segment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {job.words.map((word, i) => (
+                    <tr key={i}>
+                      <td><strong>{word.text}</strong></td>
                       <td>{Number(word.start).toFixed(2)}</td>
                       <td>{Number(word.end).toFixed(2)}</td>
-                      <td><strong>{word.text}</strong></td>
-                      <td>{word.phonemes ? JSON.stringify(word.phonemes) : "—"}</td>
-                      <td>{word.translated || "—"}</td>
+                      <td>{Number(word.duration).toFixed(3)}</td>
+                      <td>{Number(word.break_after).toFixed(3)}</td>
+                      <td>#{word.segment_id}</td>
                     </tr>
                   ))}
                 </tbody>
