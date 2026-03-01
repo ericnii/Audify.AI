@@ -86,22 +86,12 @@ def job_worker(job_id: str,
                     if not name:
                         return "en-US"
                     lower = name.lower()
-                    # Map language names to SSML language codes
-                    lang_map = {
-                        "spanish": "es-ES",
-                        "french": "fr-FR",
-                        "german": "de-DE",
-                        "italian": "it-IT",
-                        "portuguese": "pt-BR",
-                        "dutch": "nl-NL",
-                        "swedish": "sv-SE",
-                        "japanese": "ja-JP",
-                        "korean": "ko-KR",
-                        "mandarin": "zh-CN",
-                    }
-                    for key, code in lang_map.items():
-                        if key in lower:
-                            return code
+                    if "span" in lower:
+                        return "es-ES"
+                    if "english" in lower:
+                        return "en-US"
+                    if "french" in lower:
+                        return "fr-FR"
                     return "en-US"
 
                 # Determine a global language code from the job target (segments may

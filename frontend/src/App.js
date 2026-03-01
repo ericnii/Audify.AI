@@ -204,14 +204,6 @@ export default function App() {
             >
               <option value="Spanish">Spanish</option>
               <option value="French">French</option>
-              <option value="German">German</option>
-              <option value="Italian">Italian</option>
-              <option value="Portuguese">Portuguese</option>
-              <option value="Dutch">Dutch</option>
-              <option value="Swedish">Swedish</option>
-              <option value="Japanese">Japanese</option>
-              <option value="Korean">Korean</option>
-              <option value="Mandarin">Mandarin Chinese</option>
             </select>
           </label>
 
