@@ -1,16 +1,57 @@
-from faster_whisper import WhisperModel
-from text_phonemes import text_to_phonemes
-
+import os
 from pathlib import Path
+
+from faster_whisper import WhisperModel
+
+from text_phonemes import text_to_phonemes
 
 
 _model = None
+_model_device = None
+_model_compute_type = None
+
+WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL_NAME", "medium")
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "auto")
+WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+
+
+def _is_cuda_runtime_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    markers = (
+        "cublas64_12.dll",
+        "cuda",
+        "cudnn",
+        "cannot be loaded",
+        "library cublas",
+    )
+    return any(m in msg for m in markers)
+
+
+def _build_model(device: str, compute_type: str):
+    return WhisperModel(WHISPER_MODEL_NAME, device=device, compute_type=compute_type)
+
+
+def _set_model(device: str, compute_type: str) -> WhisperModel:
+    global _model, _model_device, _model_compute_type
+    _model = _build_model(device, compute_type)
+    _model_device = device
+    _model_compute_type = compute_type
+    return _model
+
 
 def _get_model():
     global _model
-    if _model is None:
-        _model = WhisperModel("medium", compute_type="int8")
-    return _model
+    if _model is not None:
+        return _model
+
+    preferred_device = WHISPER_DEVICE
+    preferred_compute_type = WHISPER_COMPUTE_TYPE
+    try:
+        return _set_model(preferred_device, preferred_compute_type)
+    except Exception as exc:
+        if preferred_device != "cpu" and _is_cuda_runtime_error(exc):
+            return _set_model("cpu", "int8")
+        raise
 
 def _merge_short_segments(segments, min_duration=0.4):
     merged = []
@@ -39,8 +80,14 @@ def _merge_short_segments(segments, min_duration=0.4):
 def transcribe_with_whisper(audio_path):
     audio_path = str(Path(audio_path).resolve())
     model = _get_model()
-
-    segments, _ = model.transcribe(audio_path, word_timestamps=True)
+    try:
+        segments, _ = model.transcribe(audio_path, word_timestamps=True)
+    except Exception as exc:
+        if _model_device != "cpu" and _is_cuda_runtime_error(exc):
+            model = _set_model("cpu", "int8")
+            segments, _ = model.transcribe(audio_path, word_timestamps=True)
+        else:
+            raise
 
     results = []
     for s in segments:

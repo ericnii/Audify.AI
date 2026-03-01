@@ -1,11 +1,12 @@
 from __future__ import annotations
+import logging
 import os
 import shutil
 import threading 
 import uuid 
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import numpy as np
@@ -14,15 +15,17 @@ import subprocess
 from apply_f0_world import apply_f0_world
 from audio_ops import time_stretch_to_duration, resample_wav
 from f0_extract import extract_f0_pyworld
-from tts_local import tts_to_wav
-from svc_infer import run_voice_conversion
+from tts_local import tts_to_wav, LANG_CODE_MAP, warmup_tts_model
+from svc_infer import get_available_speakers, run_voice_conversion
 from mixdown import mix_vocals_instrumental
 from audio_stems import seperate_stems_demucs
 from text_cleanup import clean_for_tts
+from timbre_match import select_closest_speaker
 from transcribe_whisper import transcribe_with_whisper
 from translate_marianmt import translate_segments
 
 app = FastAPI()
+LOGGER = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +41,33 @@ RUNS.mkdir(exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(RUNS)), name="files")
 
 JOBS: Dict[str, Dict[str, Any]] = {}
+SUPPORTED_LANGUAGES = sorted(LANG_CODE_MAP.keys())
+PROXY_TTS_PROGRESS_START = 75
+PROXY_TTS_PROGRESS_END = 87
+
+
+def _proxy_tts_progress(done: int, total: int) -> int:
+    if total <= 0:
+        return PROXY_TTS_PROGRESS_END
+    ratio = max(0.0, min(1.0, done / total))
+    return int(
+        round(
+            PROXY_TTS_PROGRESS_START
+            + ratio * (PROXY_TTS_PROGRESS_END - PROXY_TTS_PROGRESS_START)
+        )
+    )
+
+
+@app.on_event("startup")
+def _startup_prewarm_models() -> None:
+    if os.getenv("TTS_PREWARM", "1").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        device = warmup_tts_model()
+        LOGGER.info("TTS warmup complete on device: %s", device)
+    except Exception:
+        # Keep API available even if TTS warmup fails; first request will retry load.
+        LOGGER.exception("TTS warmup failed during startup.")
 
 def _slice_f0_window(f0: np.ndarray, t: np.ndarray, start_s: float, end_s: float):
     i0 = int(np.searchsorted(t, start_s, side="left"))
@@ -74,7 +104,8 @@ def _stitch_segments_ffmpeg(rendered: list[tuple[float, Path]], out_wav: Path, s
 def job_worker(job_id: str, 
                input_path: Path, 
                start_time: Optional[float],
-               end_time: Optional[float]
+               end_time: Optional[float],
+               target_language: str,
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -101,7 +132,7 @@ def job_worker(job_id: str,
         segments = transcribe_with_whisper(vocals_out)
 
         JOBS[job_id].update({"status": "translating", "stage": "translating", "progress": 60})
-        segments = translate_segments(segments, vocals_out, target_language="Spanish")
+        segments = translate_segments(segments, vocals_out, target_language=target_language)
 
         # New: extract F0 once
         f0_data = extract_f0_pyworld(vocals_out, sr=16000, hop_ms=10.0)
@@ -119,53 +150,69 @@ def job_worker(job_id: str,
         # For MVP: just create per-segment wavs and later stitch.
         # You will: (1) TTS -> (2) time-stretch to segment duration -> (3) (optional) pitch shaping
         rendered = []
+        total_segments = len(segments)
+        JOBS[job_id].update(
+            {
+                "status": "proxy_tts",
+                "stage": f"proxy_tts (0/{total_segments})",
+                "progress": _proxy_tts_progress(0, total_segments),
+                "proxy_segments_done": 0,
+                "proxy_segments_total": total_segments,
+            }
+        )
         
         # segment loop
-        for i, seg in enumerate(segments):
+        for i, seg in enumerate(segments, start=1):
             start = float(seg["start"])
             end = float(seg["end"])
             dur = max(0.05, end - start)
 
             text = (seg.get("translated") or "").strip()
-            if not text:
-                continue
+            if text:
+                seg_dir = proxy_dir / f"{i-1:04d}"
+                seg_dir.mkdir(parents=True, exist_ok=True)
 
-            seg_dir = proxy_dir / f"{i:04d}"
-            seg_dir.mkdir(parents=True, exist_ok=True)
+                tts_raw = seg_dir / "tts.wav"
+                tts_stretch = seg_dir / "tts_stretch.wav"
+                tts_pitched = seg_dir / "tts_pitched.wav"
 
-            tts_raw = seg_dir / "tts.wav"
-            tts_stretch = seg_dir / "tts_stretch.wav"
-            tts_pitched = seg_dir / "tts_pitched.wav"
+                # 0) clean up the text for tts
+                text = clean_for_tts(seg.get("translated", ""))
+                if text:
+                    # 1) TTS proxy
+                    tts_to_wav(text, tts_raw, language=seg["language"])  # keep your signature
 
-            # 0) clean up the text for tts
-            text = clean_for_tts(seg.get("translated", ""))
-            if not text:
-                continue
-            
-            # 1) TTS proxy
-            tts_to_wav(text, tts_raw, language=seg["language"])  # keep your signature
+                    # 2) Stretch to match original segment duration
+                    time_stretch_to_duration(tts_raw, tts_stretch, target_dur_s=dur)
 
-            # 2) Stretch to match original segment duration
-            time_stretch_to_duration(tts_raw, tts_stretch, target_dur_s=dur)
+                    # 3) Slice original F0 for this segment
+                    f0_seg, t_seg = _slice_f0_window(f0_global, t_global, start, end)
 
-            # 3) Slice original F0 for this segment
-            f0_seg, t_seg = _slice_f0_window(f0_global, t_global, start, end)
+                    # 4) Impose original melody onto stretched proxy
+                    if (f0_seg > 0).sum() < 3:
+                        # no voiced pitch to impose, just use stretched
+                        tts_pitched.write_bytes(tts_stretch.read_bytes())
+                    else:
+                        apply_f0_world(
+                            in_wav=tts_stretch,
+                            out_wav=tts_pitched,
+                            f0_target=f0_seg,
+                            t_target=t_seg,
+                            sr=sr,
+                            hop_ms=hop_ms,
+                        )
 
-            # 4) Impose original melody onto stretched proxy
-            if (f0_seg > 0).sum() < 3:
-                # no voiced pitch to impose, just use stretched
-                tts_pitched.write_bytes(tts_stretch.read_bytes())
-            else:
-                apply_f0_world(
-                    in_wav=tts_stretch,
-                    out_wav=tts_pitched,
-                    f0_target=f0_seg,
-                    t_target=t_seg,
-                    sr=sr,
-                    hop_ms=hop_ms,
-                )
-
-            rendered.append((start, tts_pitched))
+                    rendered.append((start, tts_pitched))
+            JOBS[job_id].update(
+                {
+                    "status": "proxy_tts",
+                    "stage": f"proxy_tts ({i}/{total_segments})",
+                    "progress": _proxy_tts_progress(i, total_segments),
+                    "proxy_segments_done": i,
+                    "proxy_segments_total": total_segments,
+                    "proxy_rendered_segments": len(rendered),
+                }
+            )
 
         # stitch proxy segments -> proxy_full.wav
         proxy_full = job_dir / "proxy_full.wav"
@@ -178,12 +225,16 @@ def job_worker(job_id: str,
         # New: so-vits-svc inference
         JOBS[job_id].update({"status": "svc", "stage": "svc", "progress": 88})
         v_vocals = job_dir / "v_translated_vocals.wav"
-        run_voice_conversion(proxy_full, v_vocals)
+        available_speakers = get_available_speakers()
+        selected_voice = select_closest_speaker(proxy_full, available_speakers)
+        JOBS[job_id].update({"selected_voice": selected_voice})
+        run_voice_conversion(proxy_full, v_vocals, spk_name=selected_voice)
 
         # New: mix
         JOBS[job_id].update({"status": "mixing", "stage": "mixing", "progress": 95})
         final_mix = job_dir / "final_mix.wav"
         mix_vocals_instrumental(v_vocals, inst_out, final_mix)
+        words = [w for seg in segments for w in seg.get("words", [])] if segments else []
 
         JOBS[job_id].update({
             "status": "done",
@@ -192,7 +243,9 @@ def job_worker(job_id: str,
             "vocals_url": f"/files/{job_id}/v_translated_vocals.wav",
             "instrumental_url": f"/files/{job_id}/instrumental.wav",
             "mix_url": f"/files/{job_id}/final_mix.wav",
+            "target_language": target_language,
             "segments": segments,
+            "selected_voice": selected_voice,
             "words": words,  # Add word-level timing data
         })
 
@@ -203,13 +256,25 @@ def job_worker(job_id: str,
 async def create_job(
     file: UploadFile = File(...),
     start_time: Optional[float] = Form(None),
-    end_time: Optional[float] = Form(None)
+    end_time: Optional[float] = Form(None),
+    language: str = Form("Spanish"),
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
     """
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{language}'. Supported: {', '.join(SUPPORTED_LANGUAGES)}",
+        )
+
     job_id = str(uuid.uuid4())
-    JOBS[job_id] = {"status": "queued", "stage": "queued", "progress": 0}
+    JOBS[job_id] = {
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "target_language": language,
+    }
 
     job_dir = RUNS / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -219,7 +284,7 @@ async def create_job(
 
     t = threading.Thread(
         target=job_worker, 
-        args=(job_id, input_path, start_time, end_time),
+        args=(job_id, input_path, start_time, end_time, language),
         daemon=True,
     )
     t.start()

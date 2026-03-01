@@ -282,7 +282,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--demucs-model",
-        default="mdx_extra_q",
+        default="mdx_extra",
         help="Demucs model name used when --stems-from-songs is set.",
     )
     return p.parse_args()

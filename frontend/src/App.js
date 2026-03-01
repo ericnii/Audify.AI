@@ -3,6 +3,7 @@ import "./App.css";
 
 const API_BASE = "http://localhost:8000";
 const TERMINAL_STATUSES = ["done", "error", "not_found"];
+const LANGUAGE_OPTIONS = ["Spanish", "French", "German"];
 
 function ProgressBar({ value }) {
   const v = Math.max(0, Math.min(100, Number(value ?? 0)));
@@ -61,6 +62,7 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [language, setLanguage] = useState("Spanish");
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -100,6 +102,7 @@ export default function App() {
 
     const form = new FormData();
     form.append("file", file);
+    form.append("language", language);
     if (startTime !== "" && endTime !== "") {
       form.append("start_time", String(Number(startTime)));
       form.append("end_time", String(Number(endTime)));
@@ -216,6 +219,17 @@ export default function App() {
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
           <span className="file-name">{file?.name || "No file selected"}</span>
+
+          <label className="field">
+            <span>Language</span>
+            <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="field">
             <span>Start (s)</span>

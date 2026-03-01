@@ -9,6 +9,7 @@ venv/
 .venv/
 backend/venv*/
 backend/.venv/
+backend/.venv*/
 
 # Runs
 backend/runs/
@@ -21,3 +22,6 @@ dist/
 # OS
 .DS_Store
 EOF
+
+.cache/
+.nltk_data/
