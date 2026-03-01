@@ -13,3 +13,4 @@ nltk==3.9.3
 pydub==0.25.1
 requests==2.31.0
 pretty_midi==0.2.10
+google-cloud-texttospeech==2.16.0
