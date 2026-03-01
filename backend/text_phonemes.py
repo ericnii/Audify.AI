@@ -4,4 +4,4 @@ g2p = G2p()
 
 def text_to_phonemes(text):
     phonemes = g2p(text)
-    return ' '.join(phonemes)  # Returns "HH EH L O"
+    return list(phonemes)  # Returns ["HH", "EH", "L", "O"]
