@@ -2,6 +2,8 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from google import genai
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 load_dotenv()
 
@@ -40,7 +42,7 @@ Text to translate:
 
 def translate_segments(segments: list, audio_path: Path, target_language: str = "Spanish") -> list:
     """
-    Translate transcription segments to target language.
+    Translate transcription segments to target language in parallel.
     
     Args:
         segments: List of segment dicts with "start", "end", "text" keys
@@ -50,10 +52,20 @@ def translate_segments(segments: list, audio_path: Path, target_language: str = 
     Returns:
         List of segments with translated text
     """
-    translated_segments = []
+    # Create a partial function with fixed arguments
+    translate_func = functools.partial(translate_text, audio=audio_path, target_language=target_language)
     
-    for segment in segments:
-        translated_text = translate_text(segment["text"], audio_path, target_language)
+    # Use ThreadPoolExecutor for parallel API calls
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Map segments to translation tasks
+        translations = list(executor.map(
+            lambda seg: translate_func(seg["text"]),
+            segments
+        ))
+    
+    # Combine results
+    translated_segments = []
+    for segment, translated_text in zip(segments, translations):
         translated_segments.append({
             "start": segment["start"],
             "end": segment["end"],
