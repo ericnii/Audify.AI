@@ -145,6 +145,8 @@ export default function App() {
 
   const vocalsUrl = job?.vocals_url ? `${API_BASE}${job.vocals_url}` : null;
   const instrumentalUrl = job?.instrumental_url ? `${API_BASE}${job.instrumental_url}` : null;
+  const ttsUrl = job?.tts_url ? `${API_BASE}${job.tts_url}` : null;
+  const combinedUrl = job?.combined_url ? `${API_BASE}${job.combined_url}` : null;
   const progressValue = job?.status === "done" ? 100 : Number(job?.progress ?? 0);
   const running = Boolean(job && !TERMINAL_STATUSES.includes(job.status));
   const hasTimer = startedAt !== null;
@@ -240,7 +242,7 @@ export default function App() {
           </div>
         )}
 
-        {(vocalsUrl || instrumentalUrl) && (
+        {(vocalsUrl || instrumentalUrl || ttsUrl || combinedUrl) && (
           <div className="section">
             <h2>Output</h2>
 
@@ -260,6 +262,26 @@ export default function App() {
                 <audio controls src={vocalsUrl} />
                 <div>
                   <a href={vocalsUrl} target="_blank" rel="noreferrer">Download</a>
+                </div>
+              </div>
+            )}
+
+            {ttsUrl && (
+              <div className="output-block">
+                <h3>Translated Text-to-Speech</h3>
+                <audio controls src={ttsUrl} />
+                <div>
+                  <a href={ttsUrl} target="_blank" rel="noreferrer">Download TTS audio</a>
+                </div>
+              </div>
+            )}
+
+            {combinedUrl && (
+              <div className="output-block">
+                <h3>Combined (TTS + Instrumental)</h3>
+                <audio controls src={combinedUrl} />
+                <div>
+                  <a href={combinedUrl} target="_blank" rel="noreferrer">Download combined audio</a>
                 </div>
               </div>
             )}

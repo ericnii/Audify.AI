@@ -3,6 +3,12 @@ import os
 from pathlib import Path
 import html
 from typing import List, Optional, Dict, Any
+import numpy as np
+
+try:
+    import librosa
+except ImportError:
+    librosa = None  # type: ignore
 
 try:
     from google.cloud import texttospeech
@@ -98,6 +104,38 @@ def synthesize_texts_to_mp3(
         f.write(response.audio_content)
 
 
+def reshape_for_synthesis(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Add break information between segments for better rhythm syncing.
+    Calculates natural breaks between segments and adds them to the data.
+    
+    Args:
+        segments: List of translated segments with timing info
+        
+    Returns:
+        Reshaped segments with break_after field for each segment
+    """
+    if not segments:
+        return segments
+    
+    reshaped = []
+    for i, seg in enumerate(segments):
+        seg_copy = seg.copy()
+        
+        # Calculate break time after this segment (gap to next segment)
+        if i < len(segments) - 1:
+            next_start = float(segments[i + 1].get("start", 0.0))
+            current_end = float(seg.get("end", 0.0))
+            break_duration = max(0.1, next_start - current_end)  # Minimum 0.1s break
+            seg_copy["break_after"] = break_duration
+        else:
+            seg_copy["break_after"] = 0.0  # No break after last segment
+        
+        reshaped.append(seg_copy)
+    
+    return reshaped
+
+
 def segments_to_ssml(
     segments,
     *,
@@ -126,10 +164,19 @@ def segments_to_ssml(
         safe = html.escape(text)
 
         lang = seg.get("language") or global_lang
-        parts.append(f'<voice xml:lang="{lang}">{safe}</voice>')
+        # Apply language-specific speaking rate adjustment for better pacing
+        # Spanish is naturally faster, so slow it down more than English
+        prosody_rate = "0.6"
+        parts.append(f'<prosody rate="{prosody_rate}"><voice xml:lang="{lang}">{safe}</voice></prosody>')
 
-        # Add pause AFTER this segment if one exists
-        if i < len(pause_between):
+        # Add break after this segment
+        # First check if segment has break_after (from reshape_for_synthesis)
+        if "break_after" in seg:
+            break_time = seg["break_after"]
+            if break_time > 0:
+                parts.append(f'<break time="{break_time}s"/>')
+        # Otherwise check pause_between list
+        elif i < len(pause_between):
             pause = pause_between[i]
             parts.append(f'<break time="{pause}s"/>')
 
@@ -208,3 +255,71 @@ def synthesize_texts_to_mp3_api_key(
     with open(out_path, "wb") as fh:
         fh.write(audio_bytes)
 
+
+def combine_audio_files(
+    tts_path: Path,
+    instrumental_path: Path,
+    out_path: Path,
+    segments: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """
+    Combine TTS (translated speech) and instrumental audio files.
+    Aligns TTS with instrumental timing based on segment start times.
+    
+    Args:
+        tts_path: Path to TTS MP3 file
+        instrumental_path: Path to instrumental WAV file
+        out_path: Path to save combined audio
+        segments: Optional list of segments with 'start' times to align TTS
+    """
+    if librosa is None:
+        raise RuntimeError("librosa is required to combine audio files")
+    
+    # Load both audio files
+    tts_audio, tts_sr = librosa.load(str(tts_path), sr=None)
+    instrumental_audio, inst_sr = librosa.load(str(instrumental_path), sr=None)
+    
+    # Resample to same sample rate if different
+    if tts_sr != inst_sr:
+        instrumental_audio = librosa.resample(instrumental_audio, orig_sr=inst_sr, target_sr=tts_sr)
+    
+    # Get the start time of the first segment to align TTS
+    tts_start_time = 0.0
+    if segments and len(segments) > 0:
+        tts_start_time = float(segments[0].get("start", 0.0))
+    
+    # Calculate padding (silence) needed at the start of TTS
+    tts_sr_int = int(tts_sr)
+    padding_samples = int(tts_start_time * tts_sr_int)
+    
+    # Pad TTS with silence at the beginning
+    if padding_samples > 0:
+        silence_pad = np.zeros(padding_samples)
+        tts_audio_padded = np.concatenate([silence_pad, tts_audio])
+    else:
+        tts_audio_padded = tts_audio
+    
+    # Match lengths - pad or trim to instrumental length
+    inst_len = len(instrumental_audio)
+    if len(tts_audio_padded) < inst_len:
+        # Pad TTS with silence at the end
+        silence_pad = np.zeros(inst_len - len(tts_audio_padded))
+        tts_audio_padded = np.concatenate([tts_audio_padded, silence_pad])
+    elif len(tts_audio_padded) > inst_len:
+        # Trim TTS to match instrumental length
+        tts_audio_padded = tts_audio_padded[:inst_len]
+    
+    # Mix: reduce instrumental volume a bit so TTS is prominent
+    # 70% TTS + 30% instrumental for balance
+    combined = 0.7 * tts_audio_padded + 0.3 * instrumental_audio
+    
+    # Normalize to prevent clipping
+    max_val = np.max(np.abs(combined))
+    if max_val > 1.0:
+        combined = combined / max_val
+    
+    # Save as WAV using soundfile
+    import soundfile as sf
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(out_path), combined, tts_sr_int)
