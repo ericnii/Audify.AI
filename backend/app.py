@@ -34,7 +34,8 @@ JOBS: Dict[str, Dict[str, Any]] = {}
 def job_worker(job_id: str, 
                input_path: Path, 
                start_time: Optional[float],
-               end_time: Optional[float]
+               end_time: Optional[float],
+               target_language: str = "Spanish"
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -65,7 +66,7 @@ def job_worker(job_id: str,
         words = transcription["words"]
         
         # Translate only the segments (not individual words)
-        segments = translate_segments(segments, vocals_out, target_language="Spanish")
+        segments = translate_segments(segments, vocals_out, target_language=target_language)
         
         # Reshape segments to add break timing for better rhythm syncing
         segments = reshape_for_synthesis(segments)
@@ -130,7 +131,8 @@ def job_worker(job_id: str,
 async def create_job(
     file: UploadFile = File(...),
     start_time: Optional[float] = Form(None),
-    end_time: Optional[float] = Form(None)
+    end_time: Optional[float] = Form(None),
+    target_language: str = Form("Spanish")
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
@@ -146,7 +148,7 @@ async def create_job(
 
     t = threading.Thread(
         target=job_worker, 
-        args=(job_id, input_path, start_time, end_time),
+        args=(job_id, input_path, start_time, end_time, target_language),
         daemon=True,
     )
     t.start()
