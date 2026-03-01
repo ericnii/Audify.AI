@@ -8,11 +8,19 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import numpy as np
+import subprocess
 
+from apply_f0_world import apply_f0_world
+from audio_ops import time_stretch_to_duration, resample_wav
+from f0_extract import extract_f0_pyworld
+from tts_local import tts_to_wav
+from svc_infer import run_voice_conversion
+from mixdown import mix_vocals_instrumental
 from audio_stems import seperate_stems_demucs
-from transcribe_whisper import transcribe_with_whisper, transcribe_with_segments_and_words
-from translate_gemini import translate_segments
-from vertex_tts import synthesize_texts_to_mp3_api_key, segments_to_ssml, combine_audio_files, reshape_for_synthesis
+from text_cleanup import clean_for_tts
+from transcribe_whisper import transcribe_with_whisper
+from translate_marianmt import translate_segments
 
 app = FastAPI()
 
@@ -30,6 +38,38 @@ RUNS.mkdir(exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(RUNS)), name="files")
 
 JOBS: Dict[str, Dict[str, Any]] = {}
+
+def _slice_f0_window(f0: np.ndarray, t: np.ndarray, start_s: float, end_s: float):
+    i0 = int(np.searchsorted(t, start_s, side="left"))
+    i1 = int(np.searchsorted(t, end_s, side="left"))
+    f0_seg = f0[i0:i1]
+    t_seg = t[i0:i1] - start_s
+    return f0_seg, t_seg
+
+def _stitch_segments_ffmpeg(rendered: list[tuple[float, Path]], out_wav: Path, sr: int = 16000):
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+
+    if not rendered:
+        subprocess.run(
+            ["ffmpeg","-y","-f","lavfi","-i",f"anullsrc=r={sr}:cl=mono","-t","1",str(out_wav)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return
+
+    inputs = []
+    filters = []
+    amix_inputs = []
+    for i, (start_s, wav) in enumerate(rendered):
+        inputs += ["-i", str(wav)]
+        delay_ms = int(max(0.0, start_s) * 1000)
+        filters.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
+        amix_inputs.append(f"[a{i}]")
+
+    filter_complex = ";".join(filters) + ";" + "".join(amix_inputs) + f"amix=inputs={len(rendered)}:normalize=0[out]"
+    subprocess.run(
+        ["ffmpeg","-y", *inputs, "-filter_complex", filter_complex, "-map","[out]", str(out_wav)],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
 def job_worker(job_id: str, 
                input_path: Path, 
@@ -58,67 +98,100 @@ def job_worker(job_id: str,
         shutil.copy(stems["instrumental"], inst_out)
 
         JOBS[job_id].update({"status": "transcribing", "stage": "transcribing", "progress": 50})
-        
-        # Use new function that returns both segments and words with timing/breaks
-        transcription = transcribe_with_segments_and_words(vocals_out)
-        segments = transcription["segments"]
-        words = transcription["words"]
-        
-        # Translate only the segments (not individual words)
+        segments = transcribe_with_whisper(vocals_out)
+
+        JOBS[job_id].update({"status": "translating", "stage": "translating", "progress": 60})
         segments = translate_segments(segments, vocals_out, target_language="Spanish")
-        
-        # Reshape segments to add break timing for better rhythm syncing
-        segments = reshape_for_synthesis(segments)
-        
-        JOBS[job_id].update({"stage": "finalizing", "progress": 80})
 
-        # Synthesize translated segments into TTS audio using Google Cloud TTS API
-        try:
-            api_key = os.environ.get("GOOGLE_TTS_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                JOBS[job_id].setdefault("notes", {})["tts_error"] = "No API key found for TTS"
+        # New: extract F0 once
+        f0_data = extract_f0_pyworld(vocals_out, sr=16000, hop_ms=10.0)
+        f0_global = f0_data["f0"]
+        t_global  = f0_data["t"]
+        sr        = f0_data["sr"]
+        hop_ms    = 10.0
+        # Save f0 if you want cache: np.save(job_dir/"f0.npy", f0)
+
+        # New: generate proxy TTS per segment (stub)
+        JOBS[job_id].update({"status": "proxy_tts", "stage": "proxy_tts", "progress": 75})
+        proxy_dir = job_dir / "proxy_segments"
+        proxy_dir.mkdir(exist_ok=True)
+
+        # For MVP: just create per-segment wavs and later stitch.
+        # You will: (1) TTS -> (2) time-stretch to segment duration -> (3) (optional) pitch shaping
+        rendered = []
+        
+        # segment loop
+        for i, seg in enumerate(segments):
+            start = float(seg["start"])
+            end = float(seg["end"])
+            dur = max(0.05, end - start)
+
+            text = (seg.get("translated") or "").strip()
+            if not text:
+                continue
+
+            seg_dir = proxy_dir / f"{i:04d}"
+            seg_dir.mkdir(parents=True, exist_ok=True)
+
+            tts_raw = seg_dir / "tts.wav"
+            tts_stretch = seg_dir / "tts_stretch.wav"
+            tts_pitched = seg_dir / "tts_pitched.wav"
+
+            # 0) clean up the text for tts
+            text = clean_for_tts(seg.get("translated", ""))
+            if not text:
+                continue
+            
+            # 1) TTS proxy
+            tts_to_wav(text, tts_raw, language=seg["language"])  # keep your signature
+
+            # 2) Stretch to match original segment duration
+            time_stretch_to_duration(tts_raw, tts_stretch, target_dur_s=dur)
+
+            # 3) Slice original F0 for this segment
+            f0_seg, t_seg = _slice_f0_window(f0_global, t_global, start, end)
+
+            # 4) Impose original melody onto stretched proxy
+            if (f0_seg > 0).sum() < 3:
+                # no voiced pitch to impose, just use stretched
+                tts_pitched.write_bytes(tts_stretch.read_bytes())
             else:
-                # Build SSML from translated segments so the TTS can preserve pauses,
-                # language tags, and per-segment voice hints.
-                # Map simple language names to SSML language codes when possible.
-                def _lang_name_to_code(name: Optional[str]) -> str:
-                    if not name:
-                        return "en-US"
-                    lower = name.lower()
-                    if "span" in lower:
-                        return "es-ES"
-                    if "english" in lower:
-                        return "en-US"
-                    if "french" in lower:
-                        return "fr-FR"
-                    return "en-US"
+                apply_f0_world(
+                    in_wav=tts_stretch,
+                    out_wav=tts_pitched,
+                    f0_target=f0_seg,
+                    t_target=t_seg,
+                    sr=sr,
+                    hop_ms=hop_ms,
+                )
 
-                # Determine a global language code from the job target (segments may
-                # carry a language field, but translate_segments currently writes
-                # the target name like 'Spanish').
-                global_lang = _lang_name_to_code(segments[0].get("language") if segments else None)
-                ssml = segments_to_ssml(segments, global_lang=global_lang)
-                tts_out = job_dir / "tts.mp3"
-                # Use the API key version for synthesizing translated segments
-                synthesize_texts_to_mp3_api_key(api_key, [ssml], tts_out, ssml=True, voice={"language_code": global_lang})
-                tts_url = f"/files/{job_id}/tts.mp3"
-                JOBS[job_id].update({"tts_url": tts_url})
-                
-                # Combine TTS with instrumental audio, aligned to segment timings
-                combined_out = job_dir / "combined.wav"
-                combine_audio_files(tts_out, inst_out, combined_out, segments=segments)
-                combined_url = f"/files/{job_id}/combined.wav"
-                JOBS[job_id].update({"combined_url": combined_url})
-        except Exception as e:
-            # Don't fail the whole job if TTS fails; record error for frontend
-            JOBS[job_id].setdefault("notes", {})["tts_error"] = repr(e)
+            rendered.append((start, tts_pitched))
 
-        JOBS[job_id].update({"stage": "finalizing", "progress": 95})
+        # stitch proxy segments -> proxy_full.wav
+        proxy_full = job_dir / "proxy_full.wav"
+        _stitch_segments_ffmpeg(rendered, proxy_full, sr=sr)
+
+        # resample wav to 32k
+        resample_wav(proxy_full, proxy_full, sr=32000, channels=1)
+        # Implement with ffmpeg concat once you have segments normalized SR/channels.
+
+        # New: so-vits-svc inference
+        JOBS[job_id].update({"status": "svc", "stage": "svc", "progress": 88})
+        v_vocals = job_dir / "v_translated_vocals.wav"
+        run_voice_conversion(proxy_full, v_vocals)
+
+        # New: mix
+        JOBS[job_id].update({"status": "mixing", "stage": "mixing", "progress": 95})
+        final_mix = job_dir / "final_mix.wav"
+        mix_vocals_instrumental(v_vocals, inst_out, final_mix)
 
         JOBS[job_id].update({
             "status": "done",
-            "vocals_url": f"/files/{job_id}/vocals.wav",
+            "stage": "done",
+            "progress": 100,
+            "vocals_url": f"/files/{job_id}/v_translated_vocals.wav",
             "instrumental_url": f"/files/{job_id}/instrumental.wav",
+            "mix_url": f"/files/{job_id}/final_mix.wav",
             "segments": segments,
             "words": words,  # Add word-level timing data
         })

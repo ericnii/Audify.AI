@@ -1,6 +1,5 @@
 from __future__ import annotations
 import subprocess
-import tempfile
 import sys
 from pathlib import Path
 
@@ -13,45 +12,13 @@ def seperate_stems_demucs(
         end_time: float | str | None = None,
 ) -> dict[str, Path]:
     """
-    Runs Demucs to separate vocals + instrument from a raw song file.
-    Optional start_time/end_time trim the input with ffmpeg before separation.
+    Runs Demucs to separate vocals + instrument from the full song file.
+    start_time/end_time are accepted for backward compatibility but ignored.
     Returns paths to vocals.mp3 and instrumental.mp3 (no_vocals.mp3).
     """
     input_audio = Path(input_audio).resolve()
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    demucs_input = input_audio
-
-    if (start_time is None) != (end_time is None):
-        raise ValueError("Provide both start_time and end_time, or neither.")
-    if start_time is not None and end_time is not None:
-        start_f = float(start_time)
-        end_f = float(end_time)
-        if start_f < 0:
-            raise ValueError("start_time must be >= 0.")
-        if end_f <= start_f:
-            raise ValueError("end_time must be greater than start_time.")
-
-        trimmed_dir = Path(tempfile.mkdtemp(prefix="audify_trim_", dir=str(out_dir)))
-        trimmed_input = trimmed_dir / f"{input_audio.stem}_trimmed.wav"
-        trim_cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start_time),
-            "-to", str(end_time),
-            "-i", str(input_audio),
-            "-c", "copy",
-            "-acodec", "pcm_s16le",
-            str(trimmed_input),
-        ]
-        trim_proc = subprocess.run(trim_cmd, capture_output=True, text=True)
-        if trim_proc.returncode != 0:
-            raise RuntimeError(
-                f"ffmpeg trim failed (code {trim_proc.returncode}).\n"
-                f"CMD: {' '.join(trim_cmd)}\n\n"
-                f"STDOUT:\n{trim_proc.stdout}\n\n"
-                f"STDERR:\n{trim_proc.stderr}\n"
-            )
-        demucs_input = trimmed_input
 
     cmd_demucs = [
         sys.executable, "-m", "demucs",
@@ -59,7 +26,7 @@ def seperate_stems_demucs(
         "--two-stems", "vocals",
         "--mp3",
         "--out", str(out_dir),
-        str(demucs_input)
+        str(input_audio)
     ]
 
     proc = subprocess.run(cmd_demucs, capture_output=True, text=True)

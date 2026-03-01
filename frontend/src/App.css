@@ -55,7 +55,36 @@ body {
   flex-wrap: wrap;
 }
 
-.file-input,
+.file-picker-btn {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #ffffff;
+  color: #173042;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.file-picker-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(13, 92, 99, 0.15);
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.file-name {
+  min-width: 180px;
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .field input {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -135,6 +164,11 @@ body {
 
 .section {
   margin-top: 24px;
+}
+
+.history-list {
+  display: grid;
+  gap: 12px;
 }
 
 .output-block {

@@ -19,6 +19,44 @@ function ProgressBar({ value }) {
   );
 }
 
+function JobCard({ title, entry }) {
+  if (!entry) return null;
+
+  const data = entry.job;
+  const vocalsUrl = data?.vocals_url ? `${API_BASE}${data.vocals_url}` : null;
+  const instrumentalUrl = data?.instrumental_url ? `${API_BASE}${data.instrumental_url}` : null;
+  const progressValue = data?.status === "done" ? 100 : Number(data?.progress ?? 0);
+
+  return (
+    <div className="status-card">
+      <h3>{title}</h3>
+      <div><strong>Job ID:</strong> {entry.jobId}</div>
+      <div><strong>Elapsed:</strong> {entry.elapsedSeconds}s</div>
+      {data?.status && <div><strong>Status:</strong> {data.status}</div>}
+      {data?.stage && <div><strong>Stage:</strong> {data.stage}</div>}
+      <ProgressBar value={progressValue} />
+      {entry.error && <div className="error">{entry.error}</div>}
+      {data?.error && <div className="error">{data.error}</div>}
+
+      {(vocalsUrl || instrumentalUrl) && (
+        <div className="section">
+          <h4>Outputs</h4>
+          {instrumentalUrl && (
+            <div className="output-block">
+              <audio controls src={instrumentalUrl} />
+            </div>
+          )}
+          {vocalsUrl && (
+            <div className="output-block">
+              <audio controls src={vocalsUrl} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [file, setFile] = useState(null);
   const [startTime, setStartTime] = useState("");
@@ -29,15 +67,11 @@ export default function App() {
   const [startedAt, setStartedAt] = useState(null);
   const [finishedAt, setFinishedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [history, setHistory] = useState([]);
   const pollRef = useRef(null);
 
   async function startJob() {
     setError(null);
-    setJob(null);
-    setJobId(null);
-    setStartedAt(null);
-    setFinishedAt(null);
-    setElapsedSeconds(0);
 
     if (!file) {
       setError("Pick an audio file first.");
@@ -83,8 +117,28 @@ export default function App() {
     }
 
     const data = await res.json();
+
+    if (jobId) {
+      const archivedEntry = {
+        jobId,
+        job,
+        error,
+        elapsedSeconds,
+        finishedAt: finishedAt ?? Date.now(),
+      };
+      setHistory((prev) => [archivedEntry, ...prev]);
+    }
+
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    setJob(null);
     setJobId(data.job_id);
     setStartedAt(Date.now());
+    setFinishedAt(null);
+    setElapsedSeconds(0);
   }
 
   async function fetchJob(id) {
@@ -93,7 +147,6 @@ export default function App() {
     return await res.json();
   }
 
-  // Poll job status
   useEffect(() => {
     if (!jobId) return;
 
@@ -115,7 +168,7 @@ export default function App() {
       }
     }
 
-    pollOnce(); // immediately
+    pollOnce();
     pollRef.current = setInterval(pollOnce, 1500);
 
     return () => {
@@ -140,13 +193,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, [startedAt, finishedAt]);
 
-  const vocalsUrl = job?.vocals_url ? `${API_BASE}${job.vocals_url}` : null;
-  const instrumentalUrl = job?.instrumental_url ? `${API_BASE}${job.instrumental_url}` : null;
-  const ttsUrl = job?.tts_url ? `${API_BASE}${job.tts_url}` : null;
-  const combinedUrl = job?.combined_url ? `${API_BASE}${job.combined_url}` : null;
-  const progressValue = job?.status === "done" ? 100 : Number(job?.progress ?? 0);
   const running = Boolean(job && !TERMINAL_STATUSES.includes(job.status));
-  const hasTimer = startedAt !== null;
+  const currentEntry = jobId
+    ? { jobId, job, error, elapsedSeconds, finishedAt }
+    : null;
 
   return (
     <div className="app-shell">
@@ -157,12 +207,15 @@ export default function App() {
         </header>
 
         <div className="controls">
+          <label htmlFor="audio-file" className="file-picker-btn">Choose Audio File</label>
           <input
-            className="file-input"
+            id="audio-file"
+            className="file-input-hidden"
             type="file"
             accept="audio/*"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
+          <span className="file-name">{file?.name || "No file selected"}</span>
 
           <label className="field">
             <span>Start (s)</span>
@@ -195,71 +248,7 @@ export default function App() {
 
         {error && <div className="error">{error}</div>}
 
-        {jobId && (
-          <div className="meta-row">
-            <div><strong>Job ID:</strong> {jobId}</div>
-            {hasTimer && (
-              <div>
-                <strong>Elapsed:</strong> {elapsedSeconds}s
-              </div>
-            )}
-          </div>
-        )}
-
-        {job?.status && (
-          <div className="status-card">
-            <div><strong>Status:</strong> {job.status}</div>
-            {job.stage && <div><strong>Stage:</strong> {job.stage}</div>}
-            <ProgressBar value={progressValue} />
-            {job.error && <div className="error">{job.error}</div>}
-          </div>
-        )}
-
-        {(vocalsUrl || instrumentalUrl || ttsUrl || combinedUrl) && (
-          <div className="section">
-            <h2>Outputs</h2>
-
-            {instrumentalUrl && (
-              <div className="output-block">
-                <h3>Instrumental</h3>
-                <audio controls src={instrumentalUrl} />
-                <div>
-                  <a href={instrumentalUrl} target="_blank" rel="noreferrer">Download instrumental</a>
-                </div>
-              </div>
-            )}
-
-            {vocalsUrl && (
-              <div className="output-block">
-                <h3>Extracted Vocals</h3>
-                <audio controls src={vocalsUrl} />
-                <div>
-                  <a href={vocalsUrl} target="_blank" rel="noreferrer">Download vocals</a>
-                </div>
-              </div>
-            )}
-
-            {ttsUrl && (
-              <div className="output-block">
-                <h3>Translated Text-to-Speech</h3>
-                <audio controls src={ttsUrl} />
-                <div>
-                  <a href={ttsUrl} target="_blank" rel="noreferrer">Download TTS audio</a>
-                </div>
-              </div>
-            )}
-
-            {combinedUrl && (
-              <div className="output-block">
-                <h3>Combined (TTS + Instrumental)</h3>
-                <audio controls src={combinedUrl} />
-                <div>
-                  <a href={combinedUrl} target="_blank" rel="noreferrer">Download combined audio</a>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {currentEntry && <JobCard title="Current Job" entry={currentEntry} />}
 
         {job?.segments?.length ? (
           <div className="section">
@@ -320,6 +309,17 @@ export default function App() {
             </div>
           </div>
         ) : null}
+
+        {history.length > 0 && (
+          <div className="section">
+            <h2>Previous Jobs</h2>
+            <div className="history-list">
+              {history.map((entry) => (
+                <JobCard key={entry.jobId} title="Past Job" entry={entry} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
