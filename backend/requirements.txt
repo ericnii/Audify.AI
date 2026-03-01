@@ -10,3 +10,6 @@ demucs==4.0.1
 diffq==0.0.2
 g2p_en==2.1.0
 nltk==3.9.3
+pydub==0.25.1
+requests==2.31.0
+pretty_midi==0.2.10

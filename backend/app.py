@@ -60,6 +60,19 @@ def job_worker(job_id: str,
         segments = transcribe_with_whisper(vocals_out)
         # Translate segments to Spanish with instrumental context
         segments = translate_segments(segments, clipped_vocals, target_language="Spanish")
+        JOBS[job_id].update({"stage": "finalizing", "progress": 80})
+
+        # Synthesize translated segments into TTS audio using ElevenLabs (if configured)
+        try:
+            translated_texts = [s.get("translated") or s.get("text") for s in segments]
+            tts_out = job_dir / "tts.mp3"
+            synthesize_texts_to_mp3(translated_texts, tts_out)
+            tts_url = f"/files/{job_id}/tts.mp3"
+            JOBS[job_id].update({"tts_url": tts_url})
+        except Exception as e:
+            # Don't fail the whole job if TTS fails; record error for frontend
+            JOBS[job_id].setdefault("notes", {})["tts_error"] = repr(e)
+
         JOBS[job_id].update({"stage": "finalizing", "progress": 95})
 
         JOBS[job_id].update({
