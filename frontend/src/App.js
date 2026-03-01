@@ -24,7 +24,11 @@ export default function App() {
   const [file, setFile] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+<<<<<<< HEAD
   const [language, setLanguage] = useState("Spanish");
+=======
+  const [targetLanguage, setTargetLanguage] = useState("Spanish");
+>>>>>>> new_lang
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -72,7 +76,11 @@ export default function App() {
       form.append("start_time", String(Number(startTime)));
       form.append("end_time", String(Number(endTime)));
     }
+<<<<<<< HEAD
     form.append("language", language);
+=======
+    form.append("target_language", targetLanguage);
+>>>>>>> new_lang
 
     const res = await fetch(`${API_BASE}/jobs`, {
       method: "POST",
@@ -197,6 +205,7 @@ export default function App() {
           </label>
 
           <label className="field">
+<<<<<<< HEAD
             <span>Language</span>
             <select value={language} onChange={(e) => setLanguage(e.target.value)}>
               <option value="Spanish">Spanish</option>
@@ -215,6 +224,18 @@ export default function App() {
             <span>&nbsp;</span>
           </label>
 
+=======
+            <span>Target Language</span>
+            <select
+              value={targetLanguage}
+              onChange={(e) => setTargetLanguage(e.target.value)}
+            >
+              <option value="Spanish">Spanish</option>
+              <option value="French">French</option>
+            </select>
+          </label>
+
+>>>>>>> new_lang
           <button className="start-btn" onClick={startJob} disabled={!file || running}>
             {running ? "Processing..." : "Translate"}
           </button>

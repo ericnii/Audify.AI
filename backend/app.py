@@ -35,7 +35,11 @@ def job_worker(job_id: str,
                input_path: Path,
                start_time: Optional[float],
                end_time: Optional[float],
+<<<<<<< HEAD
                language: str = "Spanish"
+=======
+               target_language: str = "Spanish"
+>>>>>>> new_lang
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -66,7 +70,15 @@ def job_worker(job_id: str,
         words = transcription["words"]
         
         # Translate only the segments (not individual words)
+<<<<<<< HEAD
         segments = translate_segments(segments, clipped_vocals, target_language=language)
+=======
+        segments = translate_segments(segments, vocals_out, target_language=target_language)
+        
+        # Reshape segments to add break timing for better rhythm syncing
+        segments = reshape_for_synthesis(segments)
+        
+>>>>>>> new_lang
         JOBS[job_id].update({"stage": "finalizing", "progress": 80})
 
         # Synthesize translated segments into TTS audio using Google Cloud TTS API
@@ -128,7 +140,11 @@ async def create_job(
     file: UploadFile = File(...),
     start_time: Optional[float] = Form(None),
     end_time: Optional[float] = Form(None),
+<<<<<<< HEAD
     language: str = Form("Spanish"),
+=======
+    target_language: str = Form("Spanish")
+>>>>>>> new_lang
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
@@ -143,8 +159,13 @@ async def create_job(
     input_path.write_bytes(await file.read())
 
     t = threading.Thread(
+<<<<<<< HEAD
         target=job_worker,
         args=(job_id, input_path, start_time, end_time, language),
+=======
+        target=job_worker, 
+        args=(job_id, input_path, start_time, end_time, target_language),
+>>>>>>> new_lang
         daemon=True,
     )
     t.start()
