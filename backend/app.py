@@ -30,10 +30,11 @@ app.mount("/files", StaticFiles(directory=str(RUNS)), name="files")
 
 JOBS: Dict[str, Dict[str, Any]] = {}
 
-def job_worker(job_id: str, 
-               input_path: Path, 
+def job_worker(job_id: str,
+               input_path: Path,
                start_time: Optional[float],
-               end_time: Optional[float]
+               end_time: Optional[float],
+               language: str = "Spanish"
                ) -> None:
     """
     Take a song and add it to JOBS (local dictionary for now, would be database or 
@@ -65,7 +66,7 @@ def job_worker(job_id: str,
         words = transcription["words"]
         
         # Translate only the segments (not individual words)
-        segments = translate_segments(segments, clipped_vocals, target_language="Spanish")
+        segments = translate_segments(segments, clipped_vocals, target_language=language)
         JOBS[job_id].update({"stage": "finalizing", "progress": 80})
 
         # Synthesize translated segments into TTS audio using ElevenLabs (if configured)
@@ -117,7 +118,8 @@ def job_worker(job_id: str,
 async def create_job(
     file: UploadFile = File(...),
     start_time: Optional[float] = Form(None),
-    end_time: Optional[float] = Form(None)
+    end_time: Optional[float] = Form(None),
+    language: str = Form("Spanish"),
 ) -> Dict[str, str]:
     """
     Create a job and add it to JOBS.
@@ -132,8 +134,8 @@ async def create_job(
     input_path.write_bytes(await file.read())
 
     t = threading.Thread(
-        target=job_worker, 
-        args=(job_id, input_path, start_time, end_time),
+        target=job_worker,
+        args=(job_id, input_path, start_time, end_time, language),
         daemon=True,
     )
     t.start()
