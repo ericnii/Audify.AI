@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from audio_stems import seperate_stems_demucs
 from transcribe_whisper import transcribe_with_whisper, transcribe_with_segments_and_words
 from translate_gemini import translate_segments
-from vertex_tts import synthesize_texts_to_mp3_api_key, segments_to_ssml, combine_audio_files
+from vertex_tts import synthesize_texts_to_mp3_api_key, segments_to_ssml, combine_audio_files, reshape_for_synthesis
 
 app = FastAPI()
 
@@ -66,6 +66,10 @@ def job_worker(job_id: str,
         
         # Translate only the segments (not individual words)
         segments = translate_segments(segments, vocals_out, target_language="Spanish")
+        
+        # Reshape segments to add break timing for better rhythm syncing
+        segments = reshape_for_synthesis(segments)
+        
         JOBS[job_id].update({"stage": "finalizing", "progress": 80})
 
         # Synthesize translated segments into TTS audio using Google Cloud TTS API

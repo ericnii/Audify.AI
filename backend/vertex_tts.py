@@ -104,6 +104,38 @@ def synthesize_texts_to_mp3(
         f.write(response.audio_content)
 
 
+def reshape_for_synthesis(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Add break information between segments for better rhythm syncing.
+    Calculates natural breaks between segments and adds them to the data.
+    
+    Args:
+        segments: List of translated segments with timing info
+        
+    Returns:
+        Reshaped segments with break_after field for each segment
+    """
+    if not segments:
+        return segments
+    
+    reshaped = []
+    for i, seg in enumerate(segments):
+        seg_copy = seg.copy()
+        
+        # Calculate break time after this segment (gap to next segment)
+        if i < len(segments) - 1:
+            next_start = float(segments[i + 1].get("start", 0.0))
+            current_end = float(seg.get("end", 0.0))
+            break_duration = max(0.1, next_start - current_end)  # Minimum 0.1s break
+            seg_copy["break_after"] = break_duration
+        else:
+            seg_copy["break_after"] = 0.0  # No break after last segment
+        
+        reshaped.append(seg_copy)
+    
+    return reshaped
+
+
 def segments_to_ssml(
     segments,
     *,
@@ -137,8 +169,14 @@ def segments_to_ssml(
         prosody_rate = "0.6"
         parts.append(f'<prosody rate="{prosody_rate}"><voice xml:lang="{lang}">{safe}</voice></prosody>')
 
-        # Add pause AFTER this segment if one exists
-        if i < len(pause_between):
+        # Add break after this segment
+        # First check if segment has break_after (from reshape_for_synthesis)
+        if "break_after" in seg:
+            break_time = seg["break_after"]
+            if break_time > 0:
+                parts.append(f'<break time="{break_time}s"/>')
+        # Otherwise check pause_between list
+        elif i < len(pause_between):
             pause = pause_between[i]
             parts.append(f'<break time="{pause}s"/>')
 
