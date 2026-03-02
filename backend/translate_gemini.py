@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import librosa
