@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
+import google.genai as genai
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import librosa
@@ -148,7 +148,10 @@ ORIGINAL TEXT TO TRANSLATE:
 Translate this text following all requirements above. 
 ONLY provide the translation without any explanation, analysis, or commentary."""
 
-    response = genai.GenerativeModel("gemini-2.5-flash").generate_content(prompt)
+    response = genai.Client(api_key=api_key).models.generate_content(
+        model="models/gemini-2.5-flash",
+        contents=prompt
+    )
     return (response.text or "").strip()
 
 
