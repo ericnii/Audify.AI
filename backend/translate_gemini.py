@@ -10,10 +10,11 @@ import numpy as np
 load_dotenv()
 
 # Configure Gemini API
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_TTS_API_KEY")
 if not api_key:
-    raise ValueError("GOOGLE_API_KEY not found in .env file")
-client = genai.Client(api_key=api_key)
+    raise ValueError("GOOGLE_API_KEY or GOOGLE_TTS_API_KEY not found in environment")
+
+genai.configure(api_key=api_key)
 
 
 def analyze_beat_and_rhythm(audio_path: Path) -> dict:
@@ -147,10 +148,7 @@ ORIGINAL TEXT TO TRANSLATE:
 Translate this text following all requirements above. 
 ONLY provide the translation without any explanation, analysis, or commentary."""
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-    )
+    response = genai.GenerativeModel("gemini-2.5-flash").generate_content(prompt)
     return (response.text or "").strip()
 
 
