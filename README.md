@@ -105,7 +105,7 @@ npm start
 
 The application will open at `http://localhost:3000`
 
-## 📖 How It Works
+## How It Works
 
 1. **Upload Audio**: User uploads an audio file through the web interface
 2. **Stem Separation**: Audio is separated into individual stems (vocals, drums, bass, etc.)
