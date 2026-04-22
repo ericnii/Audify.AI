@@ -6,7 +6,7 @@ Audify.AI is a full-stack application that intelligently processes audio files b
 
 Our next steps are to make the translated voice sing and be harmonized with the instrumentals.
 
-## ✨ Features
+## Features
 
 - **Audio Stem Separation**: Automatically separate audio into vocals, drums, bass, and other instruments using Demucs
 - **Speech Transcription**: Convert audio to text using OpenAI's Whisper with word-level accuracy
@@ -15,7 +15,7 @@ Our next steps are to make the translated voice sing and be harmonized with the 
 - **Full Pipeline**: End-to-end processing from upload to downloadable multilingual versions
 - **Real-time Job Tracking**: Monitor processing progress via the intuitive React interface
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 ### Backend
 
@@ -32,7 +32,7 @@ Our next steps are to make the translated voice sing and be harmonized with the 
 - **Build Tool**: React Scripts
 - **Testing**: Jest, React Testing Library
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Python 3.8+** (for backend)
 - **Node.js 16+** (for frontend)
@@ -40,7 +40,7 @@ Our next steps are to make the translated voice sing and be harmonized with the 
 - **Google Cloud API credentials** (for Gemini and Text-to-Speech)
 - **OpenAI or equivalent** for Whisper access
 
-## 🚀 Local Setup
+## Local Setup
 
 ### 1. Clone the Repository
 
